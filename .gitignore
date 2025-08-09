@@ -1,2 +1,5 @@
 .streamlit/secrets.toml
-ai 
+ai/
+*.ipynb
+*.ipynb_checkpoints
+.streamlit_hidden_message
