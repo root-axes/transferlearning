@@ -1,6 +1,7 @@
 import streamlit as st
 import argparse
 import torch
+import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image
 import pandas as pd
@@ -8,7 +9,7 @@ import pandas as pd
 CLASS_NAMES = ["ants", "bees"]
 MODEL_NAME = "tlcv_model.pt"
 
-# Training log data
+# epoch log 
 training_logs = [
     [0, 0.7823, 0.5943, 1.0876, 0.5752],
     [1, 0.6160, 0.7582, 0.1686, 0.9477],
@@ -32,7 +33,7 @@ training_logs = [
     [19, 0.3306, 0.8566, 0.2100, 0.9412],
 ]
 
-def predict(model_name, img_path):
+def predict(model_name, img_path, threshold=0.8):
     model = torch.load(model_name, map_location="cpu", weights_only=False)
 
     img_mean = [0.485, 0.456, 0.406]
@@ -48,13 +49,22 @@ def predict(model_name, img_path):
     preprocessed_image = transform(image).unsqueeze(0)
 
     model.eval()
-    output = model(preprocessed_image)
-    pred_idx = torch.argmax(output, dim=1)
-    return CLASS_NAMES[pred_idx]
+    with torch.no_grad():
+        output = model(preprocessed_image)
+        probs = F.softmax(output, dim=1)
+        max_prob, pred_idx = torch.max(probs, dim=1)
+
+    if max_prob.item() < threshold:
+        return "Can't classify"
+    else:
+        return CLASS_NAMES[pred_idx]
 
 def prediction_tab(model_name):
     st.header("Image Classification via Transfer Learning :: ResNet")
-    uploaded_file = st.file_uploader("Upload image of ants or bees", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader(
+        "Upload image of ants or bees (.jpeg/.jpg/.png only)",
+        type=["jpg", "jpeg", "png"]
+    )
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
         st.image(image, caption="Uploaded Image", use_container_width=True)
@@ -63,15 +73,15 @@ def prediction_tab(model_name):
             st.subheader(f"Prediction: {predicted_class}")
 
 def logs_tab():
-    st.header("Training Logs")
+    st.header("Notes")
     df = pd.DataFrame(training_logs, columns=["Epoch", "Train Loss", "Train Acc", "Val Loss", "Val Acc"])
     st.dataframe(df, use_container_width=True)
     best_val_acc = df["Val Acc"].max()
     st.markdown(f"**Best Validation Accuracy:** {best_val_acc:.4f}")
 
-    st.subheader("Dataset Information")
+    st.subheader("Info")
     st.write({
-        "Dataset Source": "Custom ants & bees dataset (Hymenoptera_data)",
+        "Dataset": "ants & bees dataset (Hymenoptera_data)",
         "Number of Classes": len(CLASS_NAMES),
         "Classes": CLASS_NAMES,
         "Image Size": "224x224 (center cropped)",
@@ -84,40 +94,29 @@ def logs_tab():
         "Center Crop": 224,
         "Normalization Mean": [0.485, 0.456, 0.406],
         "Normalization Std": [0.229, 0.224, 0.225],
-        "Augmentations": "Random Horizontal Flip (training only)"
+        "Augmentations": "Random horizontal flip and random center crop"
     })
 
     st.subheader("Model Architecture")
     st.write({
-        "Base Model": "ResNet50 (pretrained on ImageNet)",
-        "Layers Unfrozen": "Final fully connected layer only",
+        "Base Model": "ResNet18 (pretrained on ImageNet)",
+        "Layers Unfrozen": "Final fc layer only",
         "Input Size": "3 x 224 x 224",
-        "Total Trainable Parameters": "XX,XXX,XXX"
-    })
-
-    st.subheader("Training Configuration")
-    st.write({
-        "Optimizer": "SGD",
-        "Learning Rate": 0.001,
-        "Batch Size": 32,
-        "Number of Epochs": 20,
-        "Early Stopping": "Not used",
-        "Checkpointing": "Best validation accuracy"
     })
 
     st.subheader("Deployment Information")
     st.write({
-        "Model Save Path": MODEL_NAME,
-        "API Framework": "Streamlit UI only (no backend API)",
-        "Docker": "Not configured",
-        "UI Framework": "Streamlit"
+        "Model": MODEL_NAME,
+        "Framework": "Streamlit (no API)",
+        "Docker": "not used",
     })
+    st.write("Inspiration from: https://docs.pytorch.org/tutorials/beginner/transfer_learning_tutorial.html")
 
 def create_app(model_name):
-    menu = st.sidebar.radio("Navigation", ["Prediction", "Training Logs"])
+    menu = st.sidebar.radio("Navigation", ["Prediction", "Notes"])
     if menu == "Prediction":
         prediction_tab(model_name)
-    elif menu == "Training Logs":
+    elif menu == "Notes":
         logs_tab()
 
 def parse_args():
