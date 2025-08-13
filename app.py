@@ -33,7 +33,7 @@ training_logs = [
     [19, 0.3306, 0.8566, 0.2100, 0.9412],
 ]
 
-def predict(model_name, img_path, threshold=0.8):
+def predict(model_name, img_path, threshold=0.67):
     model = torch.load(model_name, map_location="cpu", weights_only=False)
 
     img_mean = [0.485, 0.456, 0.406]
